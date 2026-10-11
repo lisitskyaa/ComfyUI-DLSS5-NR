@@ -825,6 +825,17 @@ __declspec(dllexport) int __cdecl dlss5nr_process(
     auto b2 = Barrier(g_color.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     g_cmd->ResourceBarrier(1, &b2);
 
+    // The runtime blends against Backbuffer when intensity < 1. Seed it with
+    // this image rather than undefined memory or the previous image's output.
+    auto backbuffer_to_copy = Barrier(g_output.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
+    g_cmd->ResourceBarrier(1, &backbuffer_to_copy);
+    D3D12_TEXTURE_COPY_LOCATION backbuffer{};
+    backbuffer.pResource = g_output.Get();
+    backbuffer.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    g_cmd->CopyTextureRegion(&backbuffer, 0, 0, 0, &src, nullptr);
+    auto backbuffer_to_uav = Barrier(g_output.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    g_cmd->ResourceBarrier(1, &backbuffer_to_uav);
+
     NGXResult er = g_shim_eval(reinterpret_cast<void*>(g_nr_eval), g_cmd.Get(), g_feature, g_params, nullptr);
     if (er != NGX_SUCCESS) {
         SetError("DLSSNR EvaluateFeature failed: 0x%08X", static_cast<unsigned>(er));
